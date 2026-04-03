@@ -1,0 +1,22 @@
+services:
+  lapis:
+    restart: always
+    build: .
+    networks:
+      - proxynet
+      - db1
+    env_file:
+      - .env
+    volumes:
+      - /tmp/lapis_merged:${HOME}
+      - ./:/code:ro
+    ports:
+      - 6510:80
+networks:
+  proxynet:
+    name: main
+    external: true
+  db1:
+    name: db1
+    external: true
+

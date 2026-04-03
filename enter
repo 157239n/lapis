@@ -1,0 +1,4 @@
+#!/bin/bash
+
+docker exec -it lapis-lapis-1 bash
+

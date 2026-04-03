@@ -1,0 +1,10 @@
+#!/bin/bash
+
+cd "$(dirname "${BASH_SOURCE[0]}")"
+docker compose down
+fusermount -u /tmp/lapis_merged
+rm -rf   /tmp/lapis_upper /tmp/lapis_work /tmp/lapis_merged
+mkdir -p /tmp/lapis_upper /tmp/lapis_work /tmp/lapis_merged
+fuse-overlayfs -o lowerdir=/home/quang,upperdir=/tmp/lapis_upper,workdir=/tmp/lapis_work /tmp/lapis_merged
+docker compose up -d
+
