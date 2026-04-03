@@ -21,7 +21,9 @@ def index(): return "/"
 
 @app.route("/api/exec", methods=["POST"])
 @toolCatchErr
-def api_exec(js): out, err = None | cli.cmd(js["cmd"], mode=0) | apply("\n".join); return {"resultType": "str", "result": out, "stderr": err, "note": "if errors out, retry using other commands until successful"}
+def api_exec(js):
+    with k1.timer() as t: out, err = None | cli.cmd(js["cmd"], mode=0) | apply("\n".join)
+    return {"resultType": "str", "result": out, "stderr": err, "execDuration": t(), "note": "if errors out, retry using other commands until successful"}
 
 extraPyBegin = """import matplotlib.pyplot as plt; import uuid
 def _patched_show(*args, **kwargs): fname = f"/tmp/plot_{uuid.uuid4().hex}.png"; plt.savefig(fname); print(f"[saved plot] {fname}. Use .displayFile() to display to the end user. DO NOT USE MARKDOWN IMAGE TAG"); plt.close()
@@ -32,7 +34,8 @@ extraPyEnd = """\nprint("python script finished without errors")\n"""
 @toolCatchErr
 def api_runPy(js):
     fn = (extraPyBegin + js["contents"] + extraPyEnd) | cli.file(tempfile.mkstemp(suffix=".py")[1])
-    out, err = None | cli.cmd(f"python {fn}", mode=0) | apply("\n".join); return {"resultType": "str", "result": out, "stderr": err, "note": "if errors out, retry using other commands until successful"}
+    with k1.timer() as t: out, err = None | cli.cmd(f"python {fn}", mode=0) | apply("\n".join)
+    return {"resultType": "str", "result": out, "stderr": err, "execDuration": t(), "note": "if errors out, retry using other commands until successful"}
 
 @app.route("/api/writeFile", methods=["POST"])
 @toolCatchErr
