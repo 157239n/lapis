@@ -1,7 +1,8 @@
 #!/bin/bash
 
 source /root/.bashenv
-run >/dev/null 2>&1
+# run >/dev/null 2>&1
+run
 
 tail -f /dev/null
 

@@ -47,6 +47,11 @@ def api_readFile(js):
         with open(os.path.expanduser(js["fileName"]), "rb") as f: return f.read()
     except Exception as e: return f"Exception: {type(e)}\n{e}", 500, {}
 
+@app.route("/api/downloadFile", methods=["POST"])
+def api_downloadFile(js):
+    fn = tempfile.mkstemp()[1]; res = requests.get(js["url"], headers={"User-Agent": "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0"})
+    res.content | file(fn); return {"fileName": fn, "ok": res.ok, "status_code": res.status_code}
+
 @app.route("/api/error", methods=["POST"])
 def api_error(js): raise Exception("Random error")
 
