@@ -1,4 +1,12 @@
 #!/bin/bash
 
+cd "$(dirname "${BASH_SOURCE[0]}")"
 docker compose down
+
+echo "Unmounting merged overlay, requires sudo access..."
+
+lapis="/mnt/4-2/lapis"
+sudo umount "${lapis}/merged"
+
+rm -rf "${lapis}/work" "${lapis}/merged"
 

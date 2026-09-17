@@ -1,5 +1,7 @@
 #!/bin/bash
 
 docker compose build
-./overlayClear
+# ./overlayClear
+docker compose down
+docker compose up -d
 
