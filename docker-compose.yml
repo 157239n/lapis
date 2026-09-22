@@ -5,8 +5,10 @@ services:
     volumes:
       - /mnt/4-2/lapis/merged/topics:/topics
       - ./:/code:ro
+      - ./log:/code/log
       - /mnt/4-2/lapis/tmp:/tmp
       - /mnt/4-2/lapis/chatsData:/tmp/chats
+      - /mnt/4-2/lapis/apps:/apps
     ports:
       - 6510:80
 

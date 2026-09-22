@@ -2,7 +2,7 @@
 
 source /root/.bashenv
 # run >/dev/null 2>&1
-run
+run >log 2>&1
 
 tail -f /dev/null
 
