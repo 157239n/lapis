@@ -2,7 +2,7 @@
 
 source /root/.bashenv
 # run >/dev/null 2>&1
-run >log 2>&1
+run >/log 2>&1
 nginx -c /code/nginx.conf
 
 tail -f /dev/null

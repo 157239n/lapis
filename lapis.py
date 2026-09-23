@@ -1,6 +1,29 @@
 from k1lib.imports import *
 import inspect, functools, traceback, tempfile
 
+
+settings.cred.sql.nConn = 3
+db = sql("/dbs/main.db", mode="lite", manage=True, backups=["daily", "weekly"])["default"]
+
+db.query("""
+CREATE TABLE IF NOT EXISTS apps (
+    id           INTEGER primary key autoincrement,
+    port         INTEGER,
+    domain       TEXT,    -- domain on lapis.aigu.vn
+    title        TEXT,    -- site's title
+    public       BOOL,
+    createdTime  INTEGER
+);""")
+db.query("CREATE INDEX IF NOT EXISTS idx_apps_port ON apps(port)")
+db.query("""
+CREATE TABLE IF NOT EXISTS perms ( -- every time webapp_run() executes, log the triple if not exist
+    id           INTEGER primary key autoincrement,
+    appId        INTEGER,
+    userId       INTEGER,
+    chatId       INTEGER,
+    modifiedTime INTEGER
+);""")
+
 app = web.Flask(__name__)
 
 def toolCatchErr(func):
@@ -14,6 +37,44 @@ def toolCatchErr(func):
         return json.dumps({"resultType": f"{type(res).__name__}", "result": res.hex() if type(res) == bytes else res, "success": True})
     wrapper.__signature__ = original_signature; wrapper.__annotations__ = original_annotations; wrapper.__defaults__ = original_defaults; wrapper.__kwdefaults__ = original_kwdefaults; return wrapper
 os.chdir("/tmp")
+
+def loginGuard(cookies):
+    state = cookies.get("state", None)
+    if state is None: web.redirect(f"https://ai.aigu.vn/login?token=" + k1.aes_encrypt_json({"url": f"https://lapis.aigu.vn/authIn", "tokenDuration": 86400, "timeout": int(time.time()) + 20}))
+    state = k1.aes_decrypt_json(state)
+    return state["userId"]
+def appGuard(cookies, port):
+    userId = loginGuard(cookies)
+    res = db.query("select userId from perms p join apps a on p.appId = a.id where a.port = ? order by p.id limit 1", port)
+    print(f"appGuard, userId {userId}, res {res}")
+    if len(res) == 0: web.unauthorized()
+    if res[0][0] != userId: web.unauthorized()
+def adminGuard(cookies):
+    if loginGuard(cookies) != 1: web.unauthorized()
+
+def sendAiServer(userId, js): return requests.post(f"{aiServer}/ingest?token=" + k1.aes_encrypt_json({"serverName": "yt", "userId": userId, "timeout": int(time.time()) + 20}), json=js, timeout=(10, 300))
+
+@app.route("/auth/<serverName>")
+def auth(cookies, serverName):
+    app = None
+    try: app = db["apps"].lookup(port=int(serverName))
+    except: app = db["apps"].lookup(domain=serverName)
+    if app is None: web.unauthorized()
+    if app.public: return "ok"
+    res = db.query("select userId from perms where appId = ?", app.id)
+    if len(res) == 0: web.unauthorized()
+    state = cookies.get("state", None)
+    if state is None: web.unauthorized()
+    state = k1.aes_decrypt_json(state)
+    if state["userId"] != res[0][0]: web.unauthorized()
+    return "ok"
+from flask import make_response
+@app.route("/authIn")
+def authIn(args):
+    token = args.get('token', default=None)
+    if not token: web.notFound()
+    userId = k1.aes_decrypt_json(token)["userId"]; r = make_response("", 302); r.headers["Location"] = "/"
+    r.set_cookie(key="state", value=k1.aes_encrypt_json({"userId": userId}), max_age=86400, path="/", domain="lapis.aigu.vn", httponly=True, secure=True, samesite="Lax"); return r
 
 import os, re, time, shutil, signal, subprocess, sys; from pathlib import Path
 APPS_DIR = Path("/apps")
@@ -81,8 +142,12 @@ def app_status(port: int) -> bool:
     """True if something is listening on `port`."""
     if port in PROTECTED_PORTS: return True
     return _find_pid_on_port(port) is not None
-@app.route("/appControl/<int:port>/status")
-def _app_status(port): return str(app_status(port))
+def updateNginx(port:int):
+    domain = db["apps"].lookup(port=port).domain
+    f"""server {{ listen 81; server_name {port} {domain or ""};
+        location / {{ auth_request /check_auth; proxy_pass http://127.0.0.1:{port}; proxy_set_header Host $host; }}
+        location = /check_auth {{ internal; proxy_pass http://127.0.0.1:80/auth/$server_name; proxy_connect_timeout 1s; proxy_read_timeout    2s; }} }}""" | file(f"/nginx/{port}.conf")
+    None | cmd("nginx -c /code/nginx.conf -s reload")
 def app_run(port: int) -> bool:
     """Start /apps/{port}/main.py if not already running.
 
@@ -92,8 +157,7 @@ def app_run(port: int) -> bool:
       - missing main.py / crashed    -> False
     """
     if port in PROTECTED_PORTS: return True, "Port is reserved"
-    f"server {{ listen 81; server_name {port}; location / {{ proxy_pass http://127.0.0.1:{port}; proxy_set_header Host $host; }} }}" | file(f"/nginx/{port}.conf")
-    None | cmd("nginx -c /code/nginx.conf -s reload")
+    updateNginx(port)
     if app_status(port): return True, "Port occupied. If you have started the app up yourself before calling webapp_run(), then everything's good"
     app_dir = APPS_DIR / str(port); main = app_dir / "main.py"
     if not main.is_file(): return False, "No main.py file"
@@ -105,11 +169,20 @@ def app_run(port: int) -> bool:
         if app_status(port): return True, "Success, bounded"
         time.sleep(0.25)
     return proc.poll() is None, "Later poll"
-@app.route("/appControl/<int:port>/run")
-def _app_run(port):
-    ok, status = app_run(port); log = ""; time.sleep(2) # sleep to wait for it to startup
+@app.route("/appControl/<int:port>/run", methods=["POST"])
+def _app_run(port, js):
+    js = k1.aes_decrypt_json(js["payload"]); app = db["apps"].lookup(port=port)
+    if app is None: app = db["apps"].insert(port=port, domain=None, title=None, public=False, createdTime=int(time.time()))
+    perm = db["perms"].lookup(appId=app.id)
+    if perm is not None and perm.userId != js["userId"]: return {"ok": False, "status": "This webapp belongs to another user, can't start it"}
+    perm = db["perms"].lookup(appId=app.id, userId=js["userId"], chatId=js["chatId"])
+    if perm is None: perm = db["perms"].insert(appId=app.id, userId=js["userId"], chatId=js["chatId"])
+    perm.modifiedTime = int(time.time()); ok, status = app_run(port); log = ""; time.sleep(2) # sleep to wait for it to startup
     app_log = APPS_DIR/str(port)/"app.log"; os.system(f"rm -f /apps/{port}/noautostart")
     return json.dumps({"ok": ok, "status": status, "pid": _find_pid_on_port(port), "tail": app_tail(port), "url": f"https://{port}.lapis.aigu.vn"}), 200, {"Content-Type": "application/json"}
+@app.route("/appConLapis/<int:port>/run", guard=appGuard)
+def _app_run_2(port): ok, status = app_run(port); log = ""; time.sleep(2); app_log = APPS_DIR/str(port)/"app.log"; os.system(f"rm -f /apps/{port}/noautostart"); return "ok"
+
 def app_stop(port: int) -> bool:
     """Stop whatever is listening on `port`. True if it's stopped (or was already)."""
     if port in PROTECTED_PORTS: return False
@@ -117,10 +190,19 @@ def app_stop(port: int) -> bool:
     pid = _find_pid_on_port(port)
     if pid is None: return True
     _terminate(pid); return _find_pid_on_port(port) is None       # authoritative: is the port actually free?
-@app.route("/appControl/<int:port>/stop")
-def _app_stop(port): pid = _find_pid_on_port(port); return json.dumps({"stopped": app_stop(port), "pid": pid})
+@app.route("/appControl/<int:port>/stop", methods=["POST"])
+def _app_stop(port, js):
+    js = k1.aes_decrypt_json(js["payload"]); app = db["apps"].lookup(port=port)
+    if app is None: web.notFound()
+    perm = db["perms"].lookup(appId=app.id)
+    if perm is not None and perm.userId != js["userId"]: return {"ok": False, "status": "This webapp belongs to another user, can't stop it"}
+    pid = _find_pid_on_port(port); return json.dumps({"stopped": app_stop(port), "pid": pid})
+@app.route("/appConLapis/<int:port>/stop", guard=appGuard)
+def _app_stop_2(port): pid = _find_pid_on_port(port); return json.dumps({"stopped": app_stop(port), "pid": pid})
+
 def app_remove(port: int) -> bool:
     """Stop the app, delete /apps/{port}. Best-effort, always returns True."""
+    appId = db["apps"].lookup(port=port).id; del db["apps"][appId]; db.query("delete from perms where appId = ?", appId)
     if port in PROTECTED_PORTS: return True
     try: app_stop(port)
     except Exception as e: print(f"[app_remove] stop failed for {port}: {e}", file=sys.stderr)
@@ -132,7 +214,7 @@ def app_remove(port: int) -> bool:
         if app_dir.exists(): shutil.rmtree(app_dir, onerror=onerror)
     except Exception as e: print(f"[app_remove] rmtree failed for {port}: {e}", file=sys.stderr)
     return True
-@app.route("/appControl/<int:port>/remove")
+@app.route("/appConLapis/<int:port>/remove", guard=appGuard)
 def _app_remove(port): return str(app_remove(port))
 def app_tail(port: int, n: int = 4000) -> list:
     """Last `n` characters of the app's log, split into lines.
@@ -148,22 +230,33 @@ def app_tail(port: int, n: int = 4000) -> list:
     lines = raw.decode("utf-8", "replace").splitlines()
     if (size - n) > 0 and len(lines) > 1: lines = lines[1:] # If the file is bigger than `n`, our window started mid-file, so the first line is a fragment of a line that began earlier -> drop it.
     return lines
-@app.route("/appControl/<int:port>/tail")
 def _app_tail(port): return "\n".join(app_tail(port))
-@app.route("/appControl/<int:port>/readme")
-def app_readme(port):
-    path = APPS_DIR/str(port)/"readme.md"
-    if not os.path.exists(path): return ""
-    with open(path, "r") as f: return f.read()
-def allPorts(): return [int(x.split("/")[-1]) for x in ls("/apps")]
+@app.route("/appConLapis/<int:port>/changeDomain/<domain>", guard=appGuard)
+def app_changeDomain(port, domain): db.query("update apps set domain = ? where port = ?", domain, port); updateNginx(port); return "ok"
+@app.route("/appConLapis/<int:port>/public/<int:public>")
+def app_public(port, public): app = db["apps"].lookup(port=port); app.public = public; return "ok"
+
+def allPorts(): return db.query("select port from apps order by port") | cut(0) | aS(list) # return [int(x.split("/")[-1]) for x in ls("/apps")], deprecated since webapp_run() has not called once yet
+portsD = {}; import psutil
+def app_stats(root_pid): p = psutil.Process(root_pid); procs = [p] + p.children(recursive=True); return sum(x.cpu_percent(None) for x in procs), sum(x.memory_info().rss for x in procs)
+@k1.cron(delay=30)
+def portScan():
+    d = {}
+    for port in allPorts(): d[port] = _find_pid_on_port(port)
+    portsD.clear(); portsD.update(d)
+
+
 def apps_status():
-    res = []
+    res = []; dataD = {port:[domain, public] for port, domain, public in db.query("select port, domain, public from apps")}
+    chatsD = {port:chatId for port, chatId in db.query("select port, chatId from perms p join apps a on p.appId = a.id")}
     for port in allPorts():
-        readme = app_readme(port)
-        res.append({"port": port, "name": app_name(readme, port), "status": app_status(port), "tail": _app_tail(port), "readme": readme, "url": f"https://{port}.lapis.aigu.vn", "controlUrl": f"https://lapis.aigu.vn/appControl/{port}"})
+        with open(f"/apps/{port}/readme.md") as f: readme = f.read()
+        pid = portsD.get(port, 0); cpu = 0; mem = 0
+        if pid: cpu, mem = app_stats(pid)
+        domain, public = dataD.get(port, [None, 0]); chatId = chatsD.get(port); chatUrl = "#" if chatId is None else f"https://ai.aigu.vn/chats/{chatId}"
+        res.append({"port": port, "name": app_name(readme, port), "domain": domain, "status": app_status(port), "tail": _app_tail(port), "public": public, "chatUrl": chatUrl,
+                   "readme": readme, "url": f"https://{domain or port}.lapis.aigu.vn", "controlUrl": f"https://lapis.aigu.vn/appConLapis/{port}", "pid": pid, "cpu": cpu, "mem": mem})
     res.sort(key=lambda x: (not x["status"], x["port"])); return res
-@app.route("/appControl/status")
-def _apps_status(): return json.dumps(apps_status()), 200, {"Content-Type": "application/json"}
 def _app_autostart():
     for port in allPorts():
         if not os.path.exists(APPS_DIR/str(port)/"noautostart"): app_run(port)
@@ -187,14 +280,14 @@ def app_name(readme: str, port: int) -> str:
             name = s.lstrip("#").strip()
             if name: return name
     return f"App {port}"
-@app.route("/")
+@app.route("/", guard=loginGuard)
 def index(): web.redirect("/apps")
-@app.route("/apps")
+@app.route("/apps", guard=loginGuard)
 def apps_page():
     with open("/code/apps.html") as f: appsHtml = f.read()
     return appsHtml.replace("__APPS__", json.dumps(apps_status())), 200, {"Content-Type": "text/html"}
 
-app.flask()
+sql.lite_flask(app, guard=adminGuard); app.flask(guard=adminGuard)
 app.run(host="0.0.0.0", port="80")
 
 

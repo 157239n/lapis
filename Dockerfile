@@ -12,9 +12,9 @@ RUN uv venv env1 && echo "\nsource /root/.bashenv\n" >> /root/.bashrc && cat <<E
     function update() { uv pip install --force-reinstall --extra-index-url https://pypi.aigu.vn k1lib; }
 EOF
 RUN . /root/env1/bin/activate && uv pip install watchfiles flask psycopg2-binary requests unidecode pycryptodome bcrypt python-magic gunicorn
-RUN bash -c ". /root/.bashenv && update"
+RUN bash -c ". /root/.bashenv && update" && echo 1
 RUN . /root/env1/bin/activate && uv pip install MarkupSafe mpld3 numpy pandas matplotlib scipy scikit-learn beautifulsoup4 jinja2 pytest pillow opencv-python nltk spacy sympy
-RUN . /root/env1/bin/activate && uv pip install rdkit biopython pyarrow pymatgen playwright duckdb cryptography && uv run playwright install chromium
+RUN . /root/env1/bin/activate && uv pip install rdkit biopython pyarrow pymatgen playwright duckdb cryptography psutil && uv run playwright install chromium
 RUN cat <<EOF >>/root/.bashenv
     function help() { echo ""; echo "Commands: ";
         echo "- run: run the application, with auto reloading on file change"
@@ -23,7 +23,7 @@ RUN cat <<EOF >>/root/.bashenv
         echo "- kill: kills the running application"
         echo "- update: updates the k1lib and aigu libraries"; echo ""; }
     function run() { watchfiles --filter python --sigint-timeout 2 'python -u lapis.py' &
-        watchfiles --filter python --sigint-timeout 2 'python -u xenon.py' & }
+        python -u xenon.py & }
     function runG() { local workers=\${1:-4}; watchfiles --filter python 'pkill -HUP gunicorn' &
         sleep 2; gunicorn -k gthread -w \$workers --threads 8 -b 0.0.0.0:80 --graceful-timeout 5 lapis:app; }
     function runOld() { while true; do python main.py >/dev/null 2>&1; done; }

@@ -3,15 +3,19 @@ services:
     restart: always
     build: .
     volumes:
-      - /mnt/4-2/lapis/merged/topics:/topics
-      - ./nginx:/nginx
       - ./:/code:ro
-      - ./log:/code/log
-      - /mnt/4-2/lapis/tmp:/tmp
-      - /mnt/4-2/lapis/chatsData:/tmp/chats
-      - /mnt/4-2/lapis/apps:/apps
+      - ./dbs:/dbs
+      - ./k1_dbs:/code/k1_dbs
+      - ./nginx:/nginx
+      - ./log:/log
+      - ${DATADIR}/merged/topics:/topics
+      - ${DATADIR}/tmp:/tmp
+      - ${DATADIR}/chatsData:/tmp/chats
+      - ${DATADIR}/apps:/apps
     ports:
       - 6510:80
       - 6511:81
       - 64920:64920
+    env_file:
+      - .env
 
