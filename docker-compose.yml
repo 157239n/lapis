@@ -11,4 +11,5 @@ services:
       - /mnt/4-2/lapis/apps:/apps
     ports:
       - 6510:80
+      - 64920:64920
 

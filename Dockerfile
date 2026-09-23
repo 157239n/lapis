@@ -14,7 +14,8 @@ RUN uv venv env1 && echo "\nsource /root/.bashenv\n" >> /root/.bashrc && cat <<E
         echo "- runOld: run the application, while loop with bare python, does not auto reload, worst case scenario running"
         echo "- kill: kills the running application"
         echo "- update: updates the k1lib and aigu libraries"; echo ""; }
-    function run() { watchfiles --filter python --sigint-timeout 2 'python -u lapis.py'; }
+    function run() { watchfiles --filter python --sigint-timeout 2 'python -u lapis.py' &
+        watchfiles --filter python --sigint-timeout 2 'python -u xenon.py'; }
     function runG() { local workers=\${1:-4}; watchfiles --filter python 'pkill -HUP gunicorn' &
         sleep 2; gunicorn -k gthread -w \$workers --threads 8 -b 0.0.0.0:80 --graceful-timeout 5 lapis:app; }
     function runOld() { while true; do python main.py >/dev/null 2>&1; done; }
@@ -24,7 +25,7 @@ EOF
 RUN . /root/env1/bin/activate && uv pip install watchfiles flask psycopg2-binary requests unidecode pycryptodome bcrypt python-magic gunicorn
 RUN bash -c ". /root/.bashenv && update"
 RUN . /root/env1/bin/activate && uv pip install MarkupSafe mpld3 numpy pandas matplotlib scipy scikit-learn beautifulsoup4 jinja2 pytest pillow opencv-python nltk spacy sympy
-RUN . /root/env1/bin/activate && uv pip install rdkit biopython pyarrow pymatgen playwright && uv run playwright install chromium
+RUN . /root/env1/bin/activate && uv pip install rdkit biopython pyarrow pymatgen playwright duckdb cryptography && uv run playwright install chromium
 WORKDIR /code
 CMD ["./startup"]
 
