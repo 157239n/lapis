@@ -15,28 +15,6 @@ def toolCatchErr(func):
     wrapper.__signature__ = original_signature; wrapper.__annotations__ = original_annotations; wrapper.__defaults__ = original_defaults; wrapper.__kwdefaults__ = original_kwdefaults; return wrapper
 os.chdir("/tmp")
 
-from flask import request, Response, abort; import httpx
-HOP_IN  = {"host", "connection", "keep-alive", "proxy-authenticate", "proxy-authorization", "te", "trailer", "upgrade", "content-length"}
-HOP_OUT = {"content-encoding", "content-length", "transfer-encoding", "connection", "keep-alive"}
-def forward(target_url):
-    client = httpx.Client(timeout=httpx.Timeout(30.0, read=None))
-    req = client.build_request(request.method, target_url, headers={k: v for k, v in request.headers if k.lower() not in HOP_IN}, content=request.get_data() or None)
-    try: resp = client.send(req, stream=True)
-    except (httpx.ConnectError, httpx.ConnectTimeout): client.close(); return Response("webapp not reachable", status=502)
-    out_headers = {k: v for k, v in resp.headers.items() if k.lower() not in HOP_OUT}
-    def gen():
-        try: yield from resp.iter_bytes()
-        finally: resp.close(); client.close()
-    return Response(gen(), status=resp.status_code, headers=out_headers)
-@app.route("/app/<int:port>",  defaults={"path": ""}, methods=["GET", "POST"])
-@app.route("/app/<int:port>/", defaults={"path": ""}, methods=["GET", "POST"])
-@app.route("/app/<int:port>/<path:path>", methods=["GET", "POST"])
-def apps(port, path):
-    if not (9000 <= port <= 9999): abort(400)
-    url = f"http://127.0.0.1:{port}/{path}"
-    if request.query_string: url += "?" + request.query_string.decode("latin-1")
-    return forward(url)
-
 import os, re, time, shutil, signal, subprocess, sys; from pathlib import Path
 APPS_DIR = Path("/apps")
 PROTECTED_PORTS = {80, 81}   # container's own services — never touch these
@@ -114,11 +92,13 @@ def app_run(port: int) -> bool:
       - missing main.py / crashed    -> False
     """
     if port in PROTECTED_PORTS: return True, "Port is reserved"
+    f"server {{ listen 81; server_name {port}; location / {{ proxy_pass http://127.0.0.1:{port}; proxy_set_header Host $host; }} }}" | file(f"/nginx/{port}.conf")
+    None | cmd("nginx -c /code/nginx.conf -s reload")
     if app_status(port): return True, "Port occupied. If you have started the app up yourself before calling webapp_run(), then everything's good"
     app_dir = APPS_DIR / str(port); main = app_dir / "main.py"
     if not main.is_file(): return False, "No main.py file"
     app_dir.mkdir(parents=True, exist_ok=True); log = open(app_dir / "app.log", "ab")
-    proc = subprocess.Popen([sys.executable, "main.py"], cwd=app_dir, env={**os.environ, "PORT": str(port), "SERVER": f"https://lapis.aigu.vn/app/{port}"}, stdout=log, stderr=log, start_new_session=True)   # convention: app reads os.environ["PORT"]
+    proc = subprocess.Popen([sys.executable, "main.py"], cwd=app_dir, env=os.environ, stdout=log, stderr=log, start_new_session=True)   # convention: app reads os.environ["PORT"]
     log.close(); (app_dir / ".pid").write_text(str(proc.pid)); deadline = time.time() + BIND_TIMEOUT
     while time.time() < deadline:
         if proc.poll() is not None: print(); return False, "Crashed on startup"
@@ -129,7 +109,7 @@ def app_run(port: int) -> bool:
 def _app_run(port):
     ok, status = app_run(port); log = ""; time.sleep(2) # sleep to wait for it to startup
     app_log = APPS_DIR/str(port)/"app.log"; os.system(f"rm -f /apps/{port}/noautostart")
-    return json.dumps({"ok": ok, "status": status, "pid": _find_pid_on_port(port), "tail": app_tail(port), "url": f"https://lapis.aigu.vn/app/{port}"}), 200, {"Content-Type": "application/json"}
+    return json.dumps({"ok": ok, "status": status, "pid": _find_pid_on_port(port), "tail": app_tail(port), "url": f"https://{port}.lapis.aigu.vn"}), 200, {"Content-Type": "application/json"}
 def app_stop(port: int) -> bool:
     """Stop whatever is listening on `port`. True if it's stopped (or was already)."""
     if port in PROTECTED_PORTS: return False
@@ -180,7 +160,7 @@ def apps_status():
     res = []
     for port in allPorts():
         readme = app_readme(port)
-        res.append({"port": port, "name": app_name(readme, port), "status": app_status(port), "tail": _app_tail(port), "readme": readme, "url": f"https://lapis.aigu.vn/app/{port}", "controlUrl": f"https://lapis.aigu.vn/appControl/{port}"})
+        res.append({"port": port, "name": app_name(readme, port), "status": app_status(port), "tail": _app_tail(port), "readme": readme, "url": f"https://{port}.lapis.aigu.vn", "controlUrl": f"https://lapis.aigu.vn/appControl/{port}"})
     res.sort(key=lambda x: (not x["status"], x["port"])); return res
 @app.route("/appControl/status")
 def _apps_status(): return json.dumps(apps_status()), 200, {"Content-Type": "application/json"}

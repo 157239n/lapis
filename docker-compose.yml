@@ -4,6 +4,7 @@ services:
     build: .
     volumes:
       - /mnt/4-2/lapis/merged/topics:/topics
+      - ./nginx:/nginx
       - ./:/code:ro
       - ./log:/code/log
       - /mnt/4-2/lapis/tmp:/tmp
@@ -11,5 +12,6 @@ services:
       - /mnt/4-2/lapis/apps:/apps
     ports:
       - 6510:80
+      - 6511:81
       - 64920:64920
 
