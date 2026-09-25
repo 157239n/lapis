@@ -4,5 +4,5 @@ cd "$(dirname "${BASH_SOURCE[0]}")"
 lapis="/mnt/4-2/lapis"
 
 # cp -r "${lapis}/lower" "${lapis}/lower.bak"
-sudo overlay merge -l "${lapis}/lower" -u "${lapis}/upper" $@ # from https://github.com/kmxz/overlayfs-tools
+sudo overlay merge -l "${lapis}/lower" -u "${lapis}/upper" -f # from https://github.com/kmxz/overlayfs-tools
 

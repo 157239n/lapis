@@ -12,7 +12,8 @@ CREATE TABLE IF NOT EXISTS apps (
     domain       TEXT,    -- domain on lapis.aigu.vn
     title        TEXT,    -- site's title
     public       BOOL,
-    createdTime  INTEGER
+    createdTime  INTEGER,
+    disk         INTEGER  -- disk size
 );""")
 db.query("CREATE INDEX IF NOT EXISTS idx_apps_port ON apps(port)")
 db.query("""
@@ -38,11 +39,14 @@ def toolCatchErr(func):
     wrapper.__signature__ = original_signature; wrapper.__annotations__ = original_annotations; wrapper.__defaults__ = original_defaults; wrapper.__kwdefaults__ = original_kwdefaults; return wrapper
 os.chdir("/tmp")
 
+def getUserId(cookies):
+    state = cookies.get("state", None)
+    if state is None: return 0
+    return int(k1.aes_decrypt_json(state)["userId"])
 def loginGuard(cookies):
     state = cookies.get("state", None)
     if state is None: web.redirect(f"https://ai.aigu.vn/login?token=" + k1.aes_encrypt_json({"url": f"https://lapis.aigu.vn/authIn", "tokenDuration": 86400, "timeout": int(time.time()) + 20}))
-    state = k1.aes_decrypt_json(state)
-    return state["userId"]
+    return k1.aes_decrypt_json(state)["userId"]
 def appGuard(cookies, port):
     userId = loginGuard(cookies)
     res = db.query("select userId from perms p join apps a on p.appId = a.id where a.port = ? order by p.id limit 1", port)
@@ -240,22 +244,26 @@ def allPorts(): return db.query("select port from apps order by port") | cut(0) 
 portsD = {}; import psutil
 def app_stats(root_pid): p = psutil.Process(root_pid); procs = [p] + p.children(recursive=True); return sum(x.cpu_percent(None) for x in procs), sum(x.memory_info().rss for x in procs)
 @k1.cron(delay=30)
-def portScan():
-    d = {}
-    for port in allPorts(): d[port] = _find_pid_on_port(port)
-    portsD.clear(); portsD.update(d)
+def portScan(): d = {port:_find_pid_on_port(port) for port in allPorts()}; portsD.clear(); portsD.update(d)
 
 
-def apps_status():
-    res = []; dataD = {port:[domain, public] for port, domain, public in db.query("select port, domain, public from apps")}
-    chatsD = {port:chatId for port, chatId in db.query("select port, chatId from perms p join apps a on p.appId = a.id")}
-    for port in allPorts():
-        with open(f"/apps/{port}/readme.md") as f: readme = f.read()
-        pid = portsD.get(port, 0); cpu = 0; mem = 0
+def apps_status(userId:int):
+    ownedPorts = []; appIds = db.query("select id from apps where public = 1 order by id") | cut(0) | aS(list) | aS(tuple) # public apps only
+    if userId > 0:
+        res = db.query("select distinct a.id, a.port from apps a join perms p on p.appId = a.id where p.userId = ?", userId)
+        ownedPorts = res | cut(1) | aS(set); appIds = [appIds, res | cut(0)] | joinSt() | unique() | sort(None) | aS(tuple)
+    appIds = "(" + ",".join(appIds | apply(str)) + ")"
+    res = []; dataD = {port:[domain, public, disk] for port, domain, public, disk in db.query(f"select port, domain, public, disk from apps where id in {appIds}")}
+    chatsD = {port:chatId for port, chatId in db.query(f"select port, chatId from perms p join apps a on p.appId = a.id where a.id in {appIds}")}
+    for port in dataD.keys():
+        readme = ""; readmeFn = f"/apps/{port}/readme.md"
+        if os.path.exists(readmeFn):
+            with open(readmeFn) as f: readme = f.read()
+        pid = portsD.get(port, 0); cpu = 0; mem = 0; disk = 0
         if pid: cpu, mem = app_stats(pid)
-        domain, public = dataD.get(port, [None, 0]); chatId = chatsD.get(port); chatUrl = "#" if chatId is None else f"https://ai.aigu.vn/chats/{chatId}"
-        res.append({"port": port, "name": app_name(readme, port), "domain": domain, "status": app_status(port), "tail": _app_tail(port), "public": public, "chatUrl": chatUrl,
-                   "readme": readme, "url": f"https://{domain or port}.lapis.aigu.vn", "controlUrl": f"https://lapis.aigu.vn/appConLapis/{port}", "pid": pid, "cpu": cpu, "mem": mem})
+        domain, public, disk = dataD.get(port, [None, 0, 0]); chatId = chatsD.get(port); chatUrl = "#" if chatId is None else f"https://ai.aigu.vn/chats/{chatId}"
+        res.append({"port": port, "name": app_name(readme, port), "domain": domain, "status": app_status(port), "tail": _app_tail(port) if port in ownedPorts else "(not available for public)", "public": public, "chatUrl": chatUrl,
+                   "readme": readme, "url": f"https://{domain or port}.lapis.aigu.vn", "controlUrl": f"https://lapis.aigu.vn/appConLapis/{port}", "pid": pid, "cpu": cpu, "mem": mem, "disk": disk})
     res.sort(key=lambda x: (not x["status"], x["port"])); return res
 def _app_autostart():
     for port in allPorts():
@@ -269,6 +277,10 @@ def app_freePort(): # grabs a free port. Just check folder existence
         if i not in ports: picks.append(i)
     return picks | randomize(None) | item() | aS(str)
 
+@k1.cron(delay=3600)
+def scanDisk():
+    for app in db["apps"]: app.disk = None | cmd(f"du -s /apps/{app.port}") | item() | op().split("\t")[0] | aS(int) | op()*1024
+
 def app_name(readme: str, port: int) -> str:
     """First markdown header (line starting with '#'), ignoring fenced code blocks."""
     in_fence = False
@@ -280,12 +292,14 @@ def app_name(readme: str, port: int) -> str:
             name = s.lstrip("#").strip()
             if name: return name
     return f"App {port}"
-@app.route("/", guard=loginGuard)
+@app.route("/")
 def index(): web.redirect("/apps")
-@app.route("/apps", guard=loginGuard)
-def apps_page():
+@app.route("/login", guard=loginGuard)
+def login(): web.redirect("/")
+@app.route("/apps")
+def apps_page(cookies):
     with open("/code/apps.html") as f: appsHtml = f.read()
-    return appsHtml.replace("__APPS__", json.dumps(apps_status())), 200, {"Content-Type": "text/html"}
+    userId = getUserId(cookies); return appsHtml.replace("__APPS__", json.dumps(apps_status(userId))).replace("__USER_ID__", str(userId)), 200, {"Content-Type": "text/html"}
 
 sql.lite_flask(app, guard=adminGuard); app.flask(guard=adminGuard)
 app.run(host="0.0.0.0", port="80")

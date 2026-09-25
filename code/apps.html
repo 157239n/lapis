@@ -32,6 +32,10 @@
       display:flex;align-items:center;justify-content:space-between}
   header h1{margin:0;font-size:18px;font-weight:600}
   header span{color:var(--muted);font-size:13px;margin-left:8px}
+  .header-right{display:flex;align-items:center;gap:8px}
+  .login-btn{text-decoration:none;font-size:13px;font-weight:600;color:var(--accent);
+      border:1px solid var(--accent);padding:6px 14px;border-radius:8px}
+  .login-btn:hover{background:var(--accent-soft)}
   .theme-toggle{border:1px solid var(--border);background:var(--panel);color:var(--text);
       font-size:16px;line-height:1;padding:6px 10px;border-radius:8px;cursor:pointer}
   .theme-toggle:hover{background:var(--bg)}
@@ -41,8 +45,20 @@
   /* ---- sidebar ---- */
   nav{width:290px;flex:0 0 auto;background:var(--panel);border-right:1px solid var(--border);
       overflow-y:auto;display:flex;flex-direction:column}
-  nav .nav-head{padding:12px 16px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;
+  nav .nav-head{display:flex;align-items:center;justify-content:space-between;gap:8px;
+      padding:12px 16px;font-size:12px;text-transform:uppercase;letter-spacing:.05em;
       color:var(--muted);border-bottom:1px solid var(--border)}
+  .nav-sorts{display:flex;gap:4px}
+  .sort-btn{border:1px solid var(--border);background:none;color:var(--muted);
+      font-size:10px;text-transform:uppercase;letter-spacing:.04em;padding:2px 7px;
+      border-radius:6px;cursor:pointer;font-family:inherit}
+  .sort-btn:hover{background:var(--bg);color:var(--text)}
+  .sort-btn.active{background:var(--accent-soft);border-color:var(--accent);color:var(--accent)}
+  .nav-search{width:100%;border:1px solid var(--border);border-radius:8px;padding:6px 10px;
+      font-size:13px;background:var(--bg);color:var(--text);margin-top:10px;font-family:inherit}
+  .nav-search:focus{outline:none;border-color:var(--accent)}
+  .nav-search::placeholder{color:var(--muted)}
+  .nav-empty{padding:18px 16px;font-size:12px;color:var(--muted)}
   .item{display:flex;align-items:center;gap:10px;width:100%;text-align:left;border:0;background:none;
       padding:11px 16px;cursor:pointer;font-size:14px;color:var(--text);border-bottom:1px solid var(--border)}
   .item:hover{background:var(--bg)}
@@ -52,7 +68,8 @@
   .dot.off{background:var(--bad)}
   .item-body{flex:1 1 auto;display:flex;flex-direction:column;min-width:0}
   .item .name{overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-weight:500}
-  .item .stats{font-size:11px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums}
+  .item .stats{font-size:11px;color:var(--muted);margin-top:3px;font-variant-numeric:tabular-nums;
+      overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
   .item .port{color:var(--muted);font-size:12px;font-variant-numeric:tabular-nums}
 
   /* ---- main ---- */
@@ -84,7 +101,7 @@
   .ctl.remove{color:var(--bad);border-color:rgba(239,68,68,.4)}
   .ctl.remove:hover{background:rgba(239,68,68,.1)}
 
-  /* ---- app controls row (PID/CPU/MEM + subdomain + public) ---- */
+  /* ---- app controls row (PID/CPU/MEM/DISK + subdomain + public) ---- */
   .app-row{display:flex;flex-wrap:wrap;gap:10px;align-items:center}
   .stat{background:var(--panel);border:1px solid var(--border);border-radius:10px;padding:8px 12px;
       display:flex;flex-direction:column;gap:3px;min-width:80px}
@@ -93,7 +110,7 @@
   .sep{width:1px;align-self:stretch;background:var(--border);margin:2px 2px}
   .ctrl-group{display:flex;gap:8px;align-items:center}
   .ctrl-label{font-size:11px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted)}
-  .domain-input{width:130px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;
+  .domain-input{width:160px;border:1px solid var(--border);border-radius:8px;padding:6px 10px;
       font-size:13px;background:var(--bg);color:var(--text);min-width:0}
   .domain-input:focus{outline:none;border-color:var(--accent)}
   .domain-save{border:1px solid var(--accent);background:var(--accent);color:#fff;font-size:12px;
@@ -109,6 +126,16 @@
   .switch:disabled{opacity:.5;cursor:not-allowed}
   .pub-label{font-size:13px;color:var(--text);font-weight:500}
   .pub-state{font-size:12px;color:var(--muted)}
+
+  /* ---- toast ---- */
+  #toast{position:fixed;bottom:20px;left:50%;transform:translateX(-50%) translateY(20px);
+      background:var(--panel);border:1px solid var(--border);color:var(--text);
+      padding:10px 16px;border-radius:10px;font-size:13px;opacity:0;pointer-events:none;
+      transition:opacity .2s,transform .2s;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.35);
+      max-width:80vw;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+  #toast.show{opacity:1;transform:translateX(-50%) translateY(0)}
+  #toast.ok{border-color:rgba(34,197,94,.5)}
+  #toast.err{border-color:rgba(239,68,68,.5)}
 
   .section-label{font-size:12px;text-transform:uppercase;letter-spacing:.05em;color:var(--muted);margin:24px 0 8px}
   .card{background:var(--panel);border:1px solid var(--border);border-radius:12px}
@@ -153,19 +180,42 @@
 <body>
   <header>
     <h1>Apps<span id="count"></span></h1>
-    <button id="themeToggle" class="theme-toggle" title="Switch theme">🌙</button>
+    <div class="header-right">
+      <a id="loginBtn" class="login-btn" href="/login" style="display:none">Login</a>
+      <button id="themeToggle" class="theme-toggle" title="Switch theme">🌙</button>
+    </div>
   </header>
   <div class="wrap">
-    <nav id="nav"><div class="nav-head">Running first</div></nav>
+    <nav id="nav">
+      <div class="nav-head">
+        <span>Apps</span>
+        <span class="nav-sorts">
+          <button class="sort-btn" data-sort="status">Status</button>
+          <button class="sort-btn" data-sort="ram">RAM</button>
+          <button class="sort-btn" data-sort="disk">Disk</button>
+        </span>
+        <input id="searchInput" class="nav-search" type="search" placeholder="Filter apps… (name, port, sub)" spellcheck="false" autocomplete="off">
+      </div>
+    </nav>
     <main id="main"><div class="empty">No apps yet.</div></main>
   </div>
+  <div id="toast"></div>
 
 <script>
 const APPS = __APPS__;
+// Injected by the server as an int (the viewer's user id). 0 = anonymous.
+// The typeof guard means an unreplaced token degrades to "anonymous" instead of a
+// ReferenceError taking down the whole page.
+const USER_ID = (typeof __USER_ID__ === "undefined") ? 0 : (Number(__USER_ID__) || 0);
 const nav  = document.getElementById("nav");
 const main = document.getElementById("main");
 let selected = null;
 let current  = null;   // app object shown in the main pane
+
+// ---------------- login (anonymous user -> /login button) ----------------
+if(USER_ID === 0){
+  document.getElementById("loginBtn").style.display = "";
+}
 
 // ---------------- theme (cookie-backed) ----------------
 const themeBtn = document.getElementById("themeToggle");
@@ -195,6 +245,16 @@ function fmtMem(bytes){
   let i = 0, n = Number(bytes);
   while(n >= 1024 && i < u.length - 1){ n /= 1024; i++; }
   return (i === 0 ? n : n.toFixed(1)) + " " + u[i];
+}
+
+// ---------------- toast ----------------
+let toastTimer = null;
+function showToast(msg, ok){
+  const t = document.getElementById("toast");
+  t.textContent = msg;
+  t.className = "show " + (ok === false ? "err" : "ok");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(()=>{ t.className = ""; }, 2600);
 }
 
 // ---------------- ANSI -> HTML (2-pass) ----------------
@@ -298,24 +358,77 @@ function ansiToHtml(text, stage=0){
   return out;
 }
 
+// ---------------- sidebar sorting (cookie-backed) ----------------
+let sortMode = "status";
+{
+  const m = document.cookie.match(/(?:^|; )sort=(status|ram|disk)/);
+  if(m) sortMode = m[1];
+}
+
+// ---------------- sidebar search (client-side filter) ----------------
+let searchQuery = "";
+const searchInput = document.getElementById("searchInput");
+searchInput.addEventListener("input", ()=>{
+  searchQuery = searchInput.value.trim().toLowerCase();
+  renderNav();
+});
+function appMatches(a, q){
+  if(!q) return true;
+  if((a.name || "").toLowerCase().includes(q)) return true;
+  if(String(a.port).includes(q)) return true;
+  if((a.domain || "").toLowerCase().includes(q)) return true;
+  return false;
+}
+const SORTS = {
+  // default: running first, then by port (matches the server's sort)
+  status: (x,y) => ((x.status?0:1) - (y.status?0:1)) || (x.port - y.port),
+  ram:    (x,y) => ((y.mem  != null ? y.mem  : -1) - (x.mem  != null ? x.mem  : -1)) || (x.port - y.port),
+  disk:   (x,y) => ((y.disk != null ? y.disk : -1) - (x.disk != null ? x.disk : -1)) || (x.port - y.port),
+};
+function sortApps(list){
+  return list.slice().sort(SORTS[sortMode] || SORTS.status);
+}
+document.querySelectorAll(".sort-btn").forEach(b=>{
+  b.classList.toggle("active", b.dataset.sort === sortMode);
+  b.onclick = ()=>{
+    sortMode = b.dataset.sort;
+    document.cookie = "sort=" + sortMode + ";path=/;max-age=31536000;SameSite=Lax";
+    document.querySelectorAll(".sort-btn").forEach(x=>x.classList.toggle("active", x === b));
+    renderNav();
+  };
+});
+
 // ---------------- rendering ----------------
 document.getElementById("count").textContent = APPS.length ? `· ${APPS.length}` : "";
 
 function renderNav(){
-  APPS.forEach(a=>{
+  // rebuild items: filter by the search box, then sort
+  nav.querySelectorAll(".item, .nav-empty").forEach(el=>el.remove());
+  const list = sortApps(APPS.filter(a=>appMatches(a, searchQuery)));
+  if(APPS.length && !list.length){
+    const d = document.createElement("div");
+    d.className = "nav-empty";
+    d.textContent = "No apps match “" + searchInput.value.trim() + "”";
+    nav.appendChild(d);
+    return;
+  }
+  list.forEach(a=>{
     const b = document.createElement("button");
     b.className = "item" + (a.port===selected ? " active":"");
     b.innerHTML =
       `<span class="dot ${a.status?"on":"off"}"></span>` +
       `<span class="item-body">` +
         `<span class="name">${esc(a.name)}</span>` +
-        `<span class="stats">${fmtCpu(a.cpu)} · ${fmtMem(a.mem)}</span>` +
+        `<span class="stats">${fmtCpu(a.cpu)} · ${fmtMem(a.mem)} · ${fmtMem(a.disk)}</span>` +
       `</span>` +
       `<span class="port">${esc(a.port)}</span>`;
     b.onclick = ()=>select(a.port);
     b.dataset.port = a.port;
     nav.appendChild(b);
   });
+  // keep the active item in view (instant; "nearest" = no-op if already visible)
+  const act = nav.querySelector(".item.active");
+  if(act) act.scrollIntoView({block:"nearest", inline:"nearest"});
 }
 
 function renderMain(a){
@@ -339,10 +452,11 @@ function renderMain(a){
        <div class="stat"><span class="lbl">PID</span><span class="val">${a.pid != null ? esc(a.pid) : "—"}</span></div>
        <div class="stat"><span class="lbl">CPU</span><span class="val">${fmtCpu(a.cpu)}</span></div>
        <div class="stat"><span class="lbl">MEM</span><span class="val">${fmtMem(a.mem)}</span></div>
+       <div class="stat"><span class="lbl">Disk</span><span class="val">${fmtMem(a.disk)}</span></div>
        <span class="sep"></span>
        <div class="ctrl-group">
          <span class="ctrl-label">Sub</span>
-         <input id="domainInput" class="domain-input" type="text" maxlength="10"
+         <input id="domainInput" class="domain-input" type="text"
                value="${esc(a.domain || "")}" placeholder="subdomain" spellcheck="false">
          <button class="domain-save" id="domainSave" onclick="saveDomain()">Save</button>
        </div>
@@ -350,7 +464,7 @@ function renderMain(a){
        <div class="ctrl-group">
          <button class="switch${a.public ? " on" : ""}" id="pubToggle" onclick="togglePublic()" aria-pressed="${!!a.public}"></button>
          <span class="pub-label">Public</span>
-         <span class="pub-state">${a.public ? "anyone with the link can view" : "owner only"}</span>
+         <span class="pub-state" id="pubState">${a.public ? "anyone with the link can view" : "owner only"}</span>
        </div>
      </div>
      <div class="section-label">Recent logs</div>
@@ -401,6 +515,10 @@ async function control(action){
   }
 }
 
+// Subdomain save + public toggle deliberately do NOT reload: they update the
+// in-memory app object and the visible UI in place, then toast. Run/stop/remove
+// still reload, because they change status/usage/sort-order that only the
+// server-side scan can refresh.
 async function saveDomain(){
   const a = current;
   if(!a) return;
@@ -414,13 +532,16 @@ async function saveDomain(){
     if(!r.ok){
       let msg = "HTTP " + r.status;
       try{ const j = await r.json(); if(j && j.error) msg = j.error; }catch(e){}
-      alert(msg);
+      showToast(msg, false);
       btn.disabled = false;
       return;
     }
-    location.reload();
+    a.domain = domain;
+    input.value = domain;
+    btn.disabled = false;
+    showToast(domain ? `Subdomain set to "${domain}"` : "Subdomain cleared");
   }catch(e){
-    alert("Request failed: " + e.message);
+    showToast("Request failed: " + e.message, false);
     btn.disabled = false;
   }
 }
@@ -436,22 +557,34 @@ async function togglePublic(){
     if(!r.ok){
       let msg = "HTTP " + r.status;
       try{ const j = await r.json(); if(j && j.error) msg = j.error; }catch(e){}
-      alert(msg);
+      showToast(msg, false);
       btn.disabled = false;
       return;
     }
-    location.reload();
+    a.public = !!next;
+    btn.classList.toggle("on", a.public);
+    btn.setAttribute("aria-pressed", String(a.public));
+    document.getElementById("pubState").textContent =
+      a.public ? "anyone with the link can view" : "owner only";
+    btn.disabled = false;
+    showToast(a.public ? "App is now public" : "App is now owner-only");
   }catch(e){
-    alert("Request failed: " + e.message);
+    showToast("Request failed: " + e.message, false);
     btn.disabled = false;
   }
 }
 
 function select(port, fromHash){
   selected = port;
-  [...nav.querySelectorAll(".item")].forEach(el=>
-    el.classList.toggle("active", +el.dataset.port === port));
+  let act = null;
+  [...nav.querySelectorAll(".item")].forEach(el=>{
+    const on = +el.dataset.port === port;
+    el.classList.toggle("active", on);
+    if(on) act = el;
+  });
   renderMain(APPS.find(x=>x.port===port));
+  // auto-scroll the sidebar so the active item is visible ("nearest" = minimal move)
+  if(act) act.scrollIntoView({block:"nearest", inline:"nearest", behavior:"smooth"});
   // Keep the URL hash in sync (replaceState: no history spam, no hashchange loop).
   if(!fromHash && location.hash !== "#" + port){
     history.replaceState(null, "", "#" + port);

@@ -22,14 +22,14 @@ RUN cat <<EOF >>/root/.bashenv
         echo "- runOld: run the application, while loop with bare python, does not auto reload, worst case scenario running"
         echo "- kill: kills the running application"
         echo "- update: updates the k1lib and aigu libraries"; echo ""; }
-    function run() { watchfiles --filter python --sigint-timeout 2 'python -u lapis.py' &
-        python -u xenon.py & }
+    function run1() { watchfiles --filter python --sigint-timeout 2 'python -u lapis.py' &
+        python -u radon.py -pk 8636175bcfeb963cf8619019a8e3c089a6d82662e28f514e068ff0b5d62ad5c3 & }
+    function run2() { python -u radon.py -pk 1a0c59457271e8a63e2ed48e900f99a03e477ec75998fc241ed4317e0aae1512 -sc /central.conf --dashboard & }
     function runG() { local workers=\${1:-4}; watchfiles --filter python 'pkill -HUP gunicorn' &
         sleep 2; gunicorn -k gthread -w \$workers --threads 8 -b 0.0.0.0:80 --graceful-timeout 5 lapis:app; }
     function runOld() { while true; do python main.py >/dev/null 2>&1; done; }
     function kill() { pkill -9 -f watchfiles; pkill -9 -f gunicorn; pkill -9 -f python; pkill -9 -f python3; }
 EOF
 WORKDIR /code
-CMD ["./startup"]
 
 

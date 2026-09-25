@@ -1,8 +1,10 @@
 k1_dbs
 chatsData
-log
+log1
+log2
 nginx
 dbs
 .env
+central.conf
 
 

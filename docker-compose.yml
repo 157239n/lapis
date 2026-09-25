@@ -2,12 +2,13 @@ services:
   lapis:
     restart: always
     build: .
+    command: ["./startup1"]
     volumes:
-      - ./:/code:ro
+      - ./code:/code:ro
       - ./dbs:/dbs
-      - ./k1_dbs:/code/k1_dbs
+      - ./code/k1_dbs:/code/k1_dbs
       - ./nginx:/nginx
-      - ./log:/log
+      - ./log1:/log1
       - ${DATADIR}/merged/topics:/topics
       - ${DATADIR}/tmp:/tmp
       - ${DATADIR}/chatsData:/tmp/chats
@@ -15,7 +16,16 @@ services:
     ports:
       - 6510:80
       - 6511:81
-      - 64920:64920
     env_file:
       - .env
+  central_radon:
+    restart: always
+    build: .
+    command: ["./startup2"]
+    volumes:
+      - ./code:/code:ro
+      - ./central.conf:/central.conf
+      - ./log2:/log2
+    ports:
+      - 40210:40210
 

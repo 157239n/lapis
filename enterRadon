@@ -1,0 +1,4 @@
+#!/bin/bash
+
+docker exec -it lapis-central_radon-1 bash
+
